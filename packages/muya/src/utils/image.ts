@@ -89,7 +89,7 @@ function localPathToFileUrl(src: string): string {
     return `file://${normalized}`;
 }
 
-export function getImageSrc(src: string) {
+export function getImageSrc(src: string, baseDirectory?: string) {
     const EXT_REG = /\.(?:jpeg|jpg|png|gif|svg|webp)(?=\?|$)/i;
     // http[s] (domain or IPv4 or localhost or IPv6) [port] /not-white-space
     const URL_REG
@@ -102,12 +102,10 @@ export function getImageSrc(src: string) {
     const isUrl = URL_REG.test(src) || (imageExtension && isFileUrl);
     if (imageExtension) {
         const isAbsoluteLocal = ABSOLUTE_LOCAL_REG.test(src);
-        // Anchor a relative local path to the document directory. The
-        // engine runs in the host renderer where `window.DIRNAME` tracks the
-        // current document's directory; when it is absent (headless / no open
-        // file) we fall back to the `file://${src}` form.
+        // An explicit directory isolates simultaneous editors. Older hosts
+        // still supply their active document directory through window.DIRNAME.
         const baseUrl
-            = typeof window !== 'undefined' ? window.DIRNAME : undefined;
+            = baseDirectory ?? (typeof window !== 'undefined' ? window.DIRNAME : undefined);
         if (isUrl) {
             return {
                 isUnknownType: false,

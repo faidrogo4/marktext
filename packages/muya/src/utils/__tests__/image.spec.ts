@@ -12,6 +12,24 @@ import { checkImageContentType, getImageSrc, loadImage, usesDefaultObjectSize } 
 
 const DIRNAME = '/home/user/docs';
 
+describe('per-editor image directory', () => {
+    it('resolves the same relative image independently of the focused document', () => {
+        const previous = window.DIRNAME;
+        window.DIRNAME = '/active/document';
+        try {
+            expect(getImageSrc('assets/photo.png', '/first/document').src)
+                .toBe('file:///first/document/assets/photo.png');
+            expect(getImageSrc('assets/photo.png', '/second/document').src)
+                .toBe('file:///second/document/assets/photo.png');
+            expect(getImageSrc('assets/photo.png', '').src)
+                .toBe('file://assets/photo.png');
+        }
+        finally {
+            window.DIRNAME = previous;
+        }
+    });
+});
+
 function withDirname(dirname: string | undefined, fn: () => void) {
     const previous = window.DIRNAME;
     window.DIRNAME = dirname;

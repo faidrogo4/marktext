@@ -24,6 +24,7 @@ interface IFakeRenderer {
     ) => { id: string; isSuccess: boolean | undefined; width?: number; height?: number; url?: string };
     urlMap: Map<string, string>;
     muya: {
+        options: { imageBasePath?: () => string };
         editor: { selection: { image: null | unknown } };
         i18n: { t: (s: string) => string };
     };
@@ -40,6 +41,7 @@ function makeRenderer(loadResult: {
         loadImageAsync: vi.fn(() => loadResult),
         urlMap: new Map(),
         muya: {
+            options: {},
             editor: { selection: { image: null } },
             i18n: { t: (s: string) => s },
         },
@@ -101,6 +103,20 @@ function asRenderer(r: IFakeRenderer): Renderer {
 }
 
 describe('image renderer — small image class (marktext cb7be189)', () => {
+    it('resolves relative images against this editor directory', () => {
+        const renderer = makeRenderer({ id: 'mu-image-1', isSuccess: true });
+        renderer.muya.options.imageBasePath = () => '/second/document';
+        image.call(asRenderer(renderer), {
+            h,
+            block: fakeBlock,
+            cursor: fakeCursor,
+            token: makeImageToken({ src: 'assets/photo.png' }),
+        });
+        expect(renderer.loadImageAsync).toHaveBeenCalledWith(
+            { isUnknownType: false, src: 'file:///second/document/assets/photo.png' },
+            expect.anything(),
+        );
+    });
     it('adds `mu-small-image` class when loaded width is below 100px', () => {
         const renderer = makeRenderer({
             id: 'mu-image-1',

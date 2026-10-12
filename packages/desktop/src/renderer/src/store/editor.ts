@@ -119,7 +119,12 @@ interface AffiliationEntry {
 }
 
 interface SelectionChange {
-  start: { key: string; offset: number; block?: { text?: string; functionType?: string }; type?: string }
+  start: {
+    key: string
+    offset: number
+    block?: { text?: string; functionType?: string }
+    type?: string
+  }
   end: { key: string; offset: number; block?: { functionType?: string }; type?: string }
   affiliation?: AffiliationEntry[]
   hasFrontMatter?: boolean
@@ -140,6 +145,8 @@ interface ProjectStoreLike {
 
 export interface EditorState {
   currentFile: IFileState | null
+  splitView: { direction: 'vertical' | 'horizontal'; fileIds: [string, string] } | null
+  activePane: 0 | 1
   tabs: IFileState[]
   tabIdToIndex: Record<string, number>
   listToc: TocItem[]
@@ -158,6 +165,8 @@ const openIntents = new Map<string, boolean>()
 export const useEditorStore = defineStore('editor', {
   state: (): EditorState => ({
     currentFile: null,
+    splitView: null,
+    activePane: 0,
     tabs: [],
     tabIdToIndex: {},
     listToc: [], // Used for equal check and for searching for the correct github-slug to jump to
@@ -228,6 +237,8 @@ export const useEditorStore = defineStore('editor', {
       projectStore.RESTORE_BUFFERED_STATE(rawState?.project)
       layoutStore.RESTORE_BUFFERED_STATE(rawState?.layout)
       this.$patch((s) => {
+        s.splitView = null
+        s.activePane = 0
         s.tabs = tabs
         s.currentFile = currentFile
         s.tabIdToIndex = {}
@@ -417,9 +428,12 @@ export const useEditorStore = defineStore('editor', {
       }
 
       // Reload the editor if the tab is currently opened.
-      if (currentFile && pathname === currentFile.pathname) {
+      if (
+        (currentFile && pathname === currentFile.pathname) ||
+        this.splitView?.fileIds.includes(tab.id)
+      ) {
         // save current state first
-        this.currentFile = tab
+        if (currentFile?.id === tab.id) this.currentFile = tab
         const { id, cursor, history, scrollTop, muyaIndexCursor } = tab // Should not use blocks history as this is loaded from disk
         bus.emit('file-changed', {
           id,
@@ -465,7 +479,9 @@ export const useEditorStore = defineStore('editor', {
 
       // Fall back to a non-heading target: a custom `<a id="...">` (or any
       // element with a matching id) rendered in the document.
-      const anchorElement = document.getElementById(anchorSlug)
+      const anchorElement = this.splitView
+        ? document.querySelector(`.pane-active .editor-component [id="${CSS.escape(anchorSlug)}"]`)
+        : document.getElementById(anchorSlug)
       if (anchorElement) {
         bus.emit('scroll-to-anchor-element', anchorElement)
       }
@@ -688,6 +704,7 @@ export const useEditorStore = defineStore('editor', {
       const projectStore = useProjectStore()
       const preferencesStore = usePreferencesStore()
       window.electron.ipcRenderer.on('mt::ask-for-close', () => {
+        bus.emit('flush-editors')
         sendBufferedState()
           .catch((err) => {
             console.error('Failed to update buffered state before closing', err)
@@ -727,6 +744,7 @@ export const useEditorStore = defineStore('editor', {
     },
 
     ASK_FOR_SAVE_ALL(closeTabs: boolean): void {
+      bus.emit('flush-editors')
       const { tabs } = this
       const projectStore = useProjectStore()
       const unsavedFiles = tabs
@@ -858,6 +876,45 @@ export const useEditorStore = defineStore('editor', {
       debouncedSendBufferedState()
     },
 
+    getPaneFile(pane: number): IFileState | null {
+      if (!this.splitView) return pane === 0 ? this.currentFile : null
+      return this.tabs.find((file) => file.id === this.splitView?.fileIds[pane]) ?? null
+    },
+
+    START_SPLIT_VIEW({
+      tabId,
+      otherTabId,
+      direction
+    }: {
+      tabId: string
+      otherTabId: string
+      direction: 'vertical' | 'horizontal'
+    }): void {
+      const file = this.tabs.find((tab) => tab.id === tabId)
+      const other = this.tabs.find((tab) => tab.id === otherTabId)
+      if (!file || !other || file.id === other.id) return
+      if (direction !== 'vertical' && direction !== 'horizontal') return
+      bus.emit('flush-editors')
+      this.splitView = { direction, fileIds: [file.id, other.id] }
+      this.activePane = 0
+      this.UPDATE_CURRENT_FILE(file)
+    },
+
+    CLOSE_SPLIT_VIEW(tabId?: string): void {
+      if (!this.splitView) return
+      bus.emit('flush-editors')
+      const file = this.tabs.find((tab) => tab.id === tabId) ?? this.currentFile
+      this.splitView = null
+      this.activePane = 0
+      if (file) this.UPDATE_CURRENT_FILE(file)
+    },
+
+    closeSplitForTab(tabId: string): void {
+      if (!this.splitView?.fileIds.includes(tabId)) return
+      const survivor = this.splitView.fileIds.find((id) => id !== tabId)
+      this.CLOSE_SPLIT_VIEW(survivor)
+    },
+
     UPDATE_CURRENT_FILE(currentFile: IFileState): void {
       const oldCurrentFile = this.currentFile
       let didUpdateCurrentFile = false
@@ -868,6 +925,14 @@ export const useEditorStore = defineStore('editor', {
         // flushed edit is attributed to that tab and not lost on switch (#2938).
         if (oldCurrentFile) {
           this.flushActiveEditor()
+        }
+        if (this.splitView) {
+          const pane = this.splitView.fileIds.indexOf(currentFile.id)
+          if (pane >= 0) {
+            this.activePane = pane as 0 | 1
+          } else {
+            this.splitView.fileIds[this.activePane] = currentFile.id
+          }
         }
         window.DIRNAME = pathname ? window.path.dirname(pathname) : ''
         this.currentFile = currentFile
@@ -917,14 +982,8 @@ export const useEditorStore = defineStore('editor', {
             project: projectStore
           })
         )
-        bus.emit(
-          'cmd::register-command',
-          new LineEndingCommand(this)
-        )
-        bus.emit(
-          'cmd::register-command',
-          new TrailingNewlineCommand(this)
-        )
+        bus.emit('cmd::register-command', new LineEndingCommand(this))
+        bus.emit('cmd::register-command', new TrailingNewlineCommand(this))
 
         setTimeout(() => {
           window.electron.ipcRenderer.send('mt::request-keybindings')
@@ -1045,6 +1104,7 @@ export const useEditorStore = defineStore('editor', {
     },
 
     FORCE_CLOSE_TAB(file: IFileState): void {
+      this.closeSplitForTab(file.id)
       const { tabs, currentFile } = this
       const index = tabs.findIndex((t) => t.id === file.id)
       if (index > -1) {
@@ -1097,6 +1157,7 @@ export const useEditorStore = defineStore('editor', {
     },
 
     CLOSE_UNSAVED_TAB(file: IFileState): void {
+      bus.emit('flush-editors')
       const { id, pathname, filename, markdown } = file
       const options = getOptionsFromState(file)
       window.electron.ipcRenderer.send('mt::save-and-close-tabs', [
@@ -1128,6 +1189,7 @@ export const useEditorStore = defineStore('editor', {
 
     CLOSE_TABS(tabIdList: string[]): void {
       if (!tabIdList || tabIdList.length === 0) return
+      for (const id of tabIdList) this.closeSplitForTab(id)
 
       let tabIndex = 0
       tabIdList.forEach((id) => {
@@ -1155,8 +1217,7 @@ export const useEditorStore = defineStore('editor', {
       this.updateTabIdToIndex() // Update before sending it out to prevent stale mappings.
 
       if (this.currentFile == null && this.tabs.length > 0) {
-        this.currentFile =
-          this.tabs[tabIndex] ?? this.tabs[tabIndex - 1] ?? this.tabs[0] ?? null
+        this.currentFile = this.tabs[tabIndex] ?? this.tabs[tabIndex - 1] ?? this.tabs[0] ?? null
         this.selectionWordCount = null
         if (this.currentFile && typeof this.currentFile.markdown === 'string') {
           const { id, markdown, cursor, history, pathname, scrollTop, blocks, muyaIndexCursor } =
@@ -1323,7 +1384,10 @@ export const useEditorStore = defineStore('editor', {
     NEW_UNTITLED_TAB({
       markdown: markdownString,
       selected
-    }: { markdown?: string; selected?: boolean }): void {
+    }: {
+      markdown?: string
+      selected?: boolean
+    }): void {
       if (selected == null) {
         selected = true
       }
@@ -1919,10 +1983,7 @@ const getRootFolderFromState = (projectStore: ProjectStoreLike): string => {
  * @param markdown The text to trim.
  * @param trimTrailingNewlineOption The option how we should trim the final newlines.
  */
-const adjustTrailingNewlines = (
-  markdown: string,
-  trimTrailingNewlineOption: number
-): string => {
+const adjustTrailingNewlines = (markdown: string, trimTrailingNewlineOption: number): string => {
   if (!markdown) {
     return ''
   }
@@ -2095,9 +2156,7 @@ const createApplicationMenuState = ({
 /**
  * Creates a object that contains the formats selection state.
  */
-export const createSelectionFormatState = (
-  formats: SelectionFormat[]
-): Record<string, boolean> => {
+export const createSelectionFormatState = (formats: SelectionFormat[]): Record<string, boolean> => {
   const state: Record<string, boolean> = {}
   for (const item of formats) {
     // Underline/superscript/subscript/highlight are carried as `html_tag`
