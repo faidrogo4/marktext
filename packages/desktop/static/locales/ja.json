@@ -213,7 +213,13 @@
       "closeAllTabs": "すべてのタブを閉じる",
       "rename": "名前の変更",
       "copyPath": "パスのコピー",
-      "showInFolder": "フォルダーの表示"
+      "showInFolder": "フォルダーの表示",
+      "splitView": "Split View",
+      "splitVertical": "Vertical (Side by Side)",
+      "splitHorizontal": "Horizontal (Top and Bottom)",
+      "closeSplitView": "Close Split View",
+      "selectSplitFile": "Select file for this pane",
+      "resizeSplitView": "Resize split view"
     }
   },
   "search": {

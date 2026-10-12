@@ -213,7 +213,13 @@
       "closeAllTabs": "關閉所有標籤頁",
       "rename": "重新命名",
       "copyPath": "複製路徑",
-      "showInFolder": "在資料夾中顯示"
+      "showInFolder": "在資料夾中顯示",
+      "splitView": "Split View",
+      "splitVertical": "Vertical (Side by Side)",
+      "splitHorizontal": "Horizontal (Top and Bottom)",
+      "closeSplitView": "Close Split View",
+      "selectSplitFile": "Select file for this pane",
+      "resizeSplitView": "Resize split view"
     }
   },
   "search": {

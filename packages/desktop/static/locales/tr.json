@@ -213,7 +213,13 @@
       "closeAllTabs": "Tüm sekmeleri kapat",
       "rename": "Yeniden Adlandır",
       "copyPath": "Yolu kopyala",
-      "showInFolder": "Klasörde göster"
+      "showInFolder": "Klasörde göster",
+      "splitView": "Split View",
+      "splitVertical": "Vertical (Side by Side)",
+      "splitHorizontal": "Horizontal (Top and Bottom)",
+      "closeSplitView": "Close Split View",
+      "selectSplitFile": "Select file for this pane",
+      "resizeSplitView": "Resize split view"
     }
   },
   "search": {

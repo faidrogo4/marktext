@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 import { parse, compileScript } from 'vue/compiler-sfc'
 import ts from 'typescript'
-import { ref, shallowRef } from 'vue'
+import { computed, ref, shallowRef } from 'vue'
 
 // `handleImageAction` lives as a <script setup> closure in sourceCode.vue
 // (registered on the `image-action` bus during onMounted). The desktop unit
@@ -37,9 +37,10 @@ const loadComponent = (deps: Record<string, unknown>) => {
   const compiled = compileScript(descriptor, { id: 'test' })
   // Drop every import; bindings come from the injected `__deps` object so the
   // store/codeMirror/muya/config modules never load.
-  const noImports = compiled.content
-    .split('\n')
-    .filter((l) => !/^\s*import\s/.test(l))
+  const parsed = ts.createSourceFile('sourceCode.ts', compiled.content, ts.ScriptTarget.Latest, true)
+  const noImports = parsed.statements
+    .filter(statement => !ts.isImportDeclaration(statement))
+    .map(statement => compiled.content.slice(statement.getFullStart(), statement.end))
     .join('\n')
   // esbuild's transformSync trips over jsdom's TextEncoder realm, so transpile
   // the TS away with the (pure-JS) typescript compiler.
@@ -53,7 +54,8 @@ const loadComponent = (deps: Record<string, unknown>) => {
     '__deps',
     'exports',
     'module',
-    `const { _defineComponent, ref, shallowRef, watch, onMounted, onBeforeUnmount, nextTick,
+    `const { _defineComponent, computed, ref, shallowRef, watch, onMounted, onBeforeUnmount, nextTick,
+      createEditorPaneBus, ResizeObserver,
       useEditorStore, usePreferencesStore, storeToRefs, codeMirror,
       setCursorAtFirstLine, setTextDirection, getWordCount, adjustCursor, bus,
       oneDarkThemes, railscastsThemes } = __deps
@@ -69,6 +71,12 @@ const makeDeps = (over: Record<string, unknown> = {}) => ({
   _defineComponent: (o: unknown) => o,
   ref,
   shallowRef,
+  computed,
+  createEditorPaneBus: () => ({ on: () => {}, off: () => {}, emit: () => {} }),
+  ResizeObserver: class {
+    observe() {}
+    disconnect() {}
+  },
   watch: () => {},
   onMounted: () => {},
   onBeforeUnmount: () => {},
@@ -124,11 +132,7 @@ describe('sourceCode handleImageAction', () => {
   })
 
   it('rewrites only the line carrying the id, leaving siblings intact', () => {
-    const cm = makeCM(
-      'before\n![abc123](old.png)\nafter',
-      { line: 0, ch: 0 },
-      { line: 0, ch: 0 }
-    )
+    const cm = makeCM('before\n![abc123](old.png)\nafter', { line: 0, ch: 0 }, { line: 0, ch: 0 })
     bootHandler(cm)({ id: 'abc123', result: 'new.png', alt: 'cat' })
     expect(cm.getValue()).toBe('before\n![cat](new.png)\nafter')
   })
@@ -179,7 +183,7 @@ describe('sourceCode handleImageAction', () => {
     bootHandler(cm, deps)({ id: 'zzz', result: 'r.png', alt: 'x' })
     expect(cm.getValue()).toBe('no images here')
     expect(cm.setSelection).not.toHaveBeenCalled()
-    expect((deps.setCursorAtFirstLine as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled()
+    expect(deps.setCursorAtFirstLine as ReturnType<typeof vi.fn>).not.toHaveBeenCalled()
   })
 
   it('early-returns on the structure-deleted branch (id present, no image markup)', () => {
@@ -190,7 +194,7 @@ describe('sourceCode handleImageAction', () => {
     bootHandler(cm, deps)({ id: 'abc123', result: 'r.png', alt: 'x' })
     expect(cm.getValue()).toBe('see abc123 ref')
     expect(cm.setSelection).not.toHaveBeenCalled()
-    expect((deps.setCursorAtFirstLine as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled()
+    expect(deps.setCursorAtFirstLine as ReturnType<typeof vi.fn>).not.toHaveBeenCalled()
   })
 
   it('skips an image whose id starts at column 0 (indexOf > 0 quirk)', () => {
@@ -207,6 +211,6 @@ describe('sourceCode handleImageAction', () => {
     bootHandler(cm, deps)({ id: 'abc123', result: 'new.png', alt: 'cat' })
     expect(cm.getValue()).toBe('![cat](new.png)')
     expect(cm.setSelection).not.toHaveBeenCalled()
-    expect((deps.setCursorAtFirstLine as ReturnType<typeof vi.fn>)).toHaveBeenCalledTimes(1)
+    expect(deps.setCursorAtFirstLine as ReturnType<typeof vi.fn>).toHaveBeenCalledTimes(1)
   })
 })

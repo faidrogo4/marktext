@@ -213,7 +213,13 @@
       "closeAllTabs": "모든 탭 닫기",
       "rename": "이름 바꾸기",
       "copyPath": "경로 복사",
-      "showInFolder": "폴더에서 보기"
+      "showInFolder": "폴더에서 보기",
+      "splitView": "Split View",
+      "splitVertical": "Vertical (Side by Side)",
+      "splitHorizontal": "Horizontal (Top and Bottom)",
+      "closeSplitView": "Close Split View",
+      "selectSplitFile": "Select file for this pane",
+      "resizeSplitView": "Resize split view"
     }
   },
   "search": {

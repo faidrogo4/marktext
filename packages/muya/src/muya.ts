@@ -325,7 +325,9 @@ export class Muya {
         // so suppress History's own recording of it to avoid a duplicate entry.
         history.recordRebuild(op, prevState, boundarySelection);
         history.suppressRecording(() => {
-            this.editor.rebuildContents(op, selection, 'api');
+            const anchorNode = document.getSelection()?.anchorNode;
+            const restoreSelection = anchorNode && this.domNode.contains(anchorNode) ? selection : null;
+            this.editor.rebuildContents(op, restoreSelection, 'api');
         });
 
         return true;
@@ -365,7 +367,10 @@ export class Muya {
     }
 
     private _forceRender() {
-        const selection = this.editor.selection.getSelection();
+        const anchorNode = document.getSelection()?.anchorNode;
+        const selection = anchorNode && this.domNode.contains(anchorNode)
+            ? this.editor.selection.getSelection()
+            : null;
         this.editor.scrollPage?.updateState(this.getState());
 
         if (selection && selection.isSelectionInSameBlock) {

@@ -213,7 +213,13 @@
       "closeAllTabs": "Cerrar todas las pestañas",
       "rename": "Renombrar",
       "copyPath": "Copiar ruta",
-      "showInFolder": "Mostrar en carpeta"
+      "showInFolder": "Mostrar en carpeta",
+      "splitView": "Split View",
+      "splitVertical": "Vertical (Side by Side)",
+      "splitHorizontal": "Horizontal (Top and Bottom)",
+      "closeSplitView": "Close Split View",
+      "selectSplitFile": "Select file for this pane",
+      "resizeSplitView": "Resize split view"
     }
   },
   "search": {
