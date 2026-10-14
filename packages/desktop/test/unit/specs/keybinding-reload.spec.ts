@@ -88,3 +88,48 @@ describe('Keybindings.setUserKeybindings live re-registration (#3681)', () => {
     expect(register).not.toHaveBeenCalled()
   })
 })
+
+describe('zoom shortcut aliases', () => {
+  it('routes both plus and equals to the existing zoom command', () => {
+    const kb = makeKeybindings()
+    const win = { isDestroyed: () => false } as unknown as WinArg
+    kb.keys = new Map([['window.zoomIn', 'Ctrl+Plus'], ['window.zoomOut', 'Ctrl+-']])
+    kb.registerEditorKeyHandlers(win)
+    for (const accelerator of ['Ctrl+Plus', 'Ctrl+=']) {
+      const registered = register.mock.calls.find((call) => call[1] === accelerator)
+      expect(registered).toBeDefined()
+      expect(registered![2]()).toBe(true)
+      expect(kb.commandManager.execute).toHaveBeenLastCalledWith('window.zoomIn', win)
+    }
+  })
+
+  it('keeps an explicitly assigned equals shortcut with its own command', () => {
+    const kb = makeKeybindings()
+    const win = { isDestroyed: () => false } as unknown as WinArg
+    kb.keys = new Map([['window.zoomIn', 'Ctrl+Plus'], ['file.save', 'Ctrl+=']])
+    kb.registerEditorKeyHandlers(win)
+    const equals = register.mock.calls.filter((call) => call[1] === 'Ctrl+=')
+    expect(equals).toHaveLength(1)
+    equals[0][2]()
+    expect(kb.commandManager.execute).toHaveBeenLastCalledWith('file.save', win)
+  })
+
+  it('removes the old alias when zoom is rebound', async() => {
+    const kb = makeKeybindings()
+    const win = { isDestroyed: () => false } as unknown as WinArg
+    kb.keys = new Map([['window.zoomIn', 'Ctrl+Plus']])
+    await kb.setUserKeybindings(new Map([['window.zoomIn', 'Ctrl+9']]), [win])
+    expect(unregister).toHaveBeenCalledWith(win, 'Ctrl+=')
+    expect(register).not.toHaveBeenCalledWith(win, 'Ctrl+=', expect.any(Function))
+    expect(register).toHaveBeenCalledWith(win, 'Ctrl+9', expect.any(Function))
+  })
+
+  it('does not retain an alias after zoom is disabled', async() => {
+    const kb = makeKeybindings()
+    const win = { isDestroyed: () => false } as unknown as WinArg
+    kb.keys = new Map([['window.zoomIn', 'Ctrl+Plus']])
+    await kb.setUserKeybindings(new Map([['window.zoomIn', '']]), [win])
+    expect(unregister).toHaveBeenCalledWith(win, 'Ctrl+=')
+    expect(register).not.toHaveBeenCalledWith(win, 'Ctrl+=', expect.any(Function))
+  })
+})

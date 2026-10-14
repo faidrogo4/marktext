@@ -78,12 +78,26 @@ class Keybindings {
 
   registerEditorKeyHandlers(win: BrowserWindow): void {
     for (const [id, accelerator] of this.keys) {
-      if (accelerator && accelerator.length > 1) {
-        this.registerAccelerator(win, accelerator, () => {
+      for (const shortcut of this._getAccelerators(id, accelerator)) {
+        this.registerAccelerator(win, shortcut, () => {
           this.commandManager.execute(id, win)
         })
       }
     }
+  }
+
+  private _getAccelerators(id: string, accelerator: string): string[] {
+    if (!accelerator || accelerator.length <= 1) return []
+    const shortcuts = [accelerator]
+    if (id === 'window.zoomIn' && /(?:^|\+)Plus$/i.test(accelerator)) {
+      // The unshifted +/= key is a zoom alias unless another command owns it.
+      const alias = accelerator.replace(/Plus$/i, '=')
+      const occupied = [...this.keys].some(
+        ([otherId, value]) => otherId !== id && isEqualAccelerator(value, alias)
+      )
+      if (!occupied) shortcuts.push(alias)
+    }
+    return shortcuts
   }
 
   openConfigInFileManager(): void {
@@ -133,8 +147,8 @@ class Keybindings {
    * takes effect without restarting the application.
    */
   _reloadKeybindings(windows: BrowserWindow[]): void {
-    const previousAccelerators = [...this.keys.values()].filter(
-      (accelerator) => accelerator && accelerator.length > 1
+    const previousAccelerators = [...this.keys].flatMap(
+      ([id, accelerator]) => this._getAccelerators(id, accelerator)
     )
 
     this.keys = this.getDefaultKeybindings()
