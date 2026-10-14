@@ -184,14 +184,21 @@ class TextSelection {
 
         const { anchorNode, anchorOffset, focusNode, focusOffset } = selection;
 
-        if (!anchorNode || !focusNode)
+        // Chromium shares one native selection across every editor in the window.
+        if (!anchorNode || !focusNode
+            || !this._muya.domNode.contains(anchorNode)
+            || !this._muya.domNode.contains(focusNode)) {
             return null;
+        }
 
         const anchor = resolveEndpoint(anchorNode, anchorOffset);
         const focus = resolveEndpoint(focusNode, focusOffset);
 
-        if (!anchor || !focus)
+        if (!anchor || !focus
+            || anchor.block.muya !== this._muya
+            || focus.block.muya !== this._muya) {
             return null;
+        }
 
         const anchorBlock = anchor.block;
         const focusBlock = focus.block;
@@ -220,10 +227,6 @@ class TextSelection {
             return '';
 
         const { anchor, focus, direction } = selection;
-        // `getSelection()` resolves whichever editor the range landed in.
-        if (anchor.block.muya !== this._muya || focus.block.muya !== this._muya)
-            return '';
-
         const [start, end] = direction === SelectionDirection.BACKWARD ? [focus, anchor] : [anchor, focus];
         if (start.block === end.block)
             return start.block.text.slice(start.offset, end.offset);
@@ -247,6 +250,9 @@ class TextSelection {
     }
 
     setSelection(anchor: IAnchorFocusInfo, focus: IAnchorFocusInfo) {
+        if (anchor.block.muya !== this._muya || focus.block.muya !== this._muya)
+            return;
+
         this.anchor = { offset: anchor.offset };
         this.anchorBlock = anchor.block;
         this.anchorPath = anchor.path;
@@ -416,8 +422,12 @@ class TextSelection {
         if (!anchor || !focus) {
             const selection = this._doc.getSelection();
 
-            if (selection)
+            if (selection && (
+                this._muya.domNode.contains(selection.anchorNode)
+                || this._muya.domNode.contains(selection.focusNode)
+            )) {
                 selection.removeAllRanges();
+            }
 
             return;
         }
