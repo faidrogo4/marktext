@@ -280,6 +280,27 @@ class JSONState {
         this._flushOperationCache();
     }
 
+    private _recoverFromLiveTree(error: unknown): boolean {
+        const editor = this._muya.editor;
+        if (!editor?.scrollPage)
+            return false;
+
+        // Deferred edits have already changed the live tree. Preserve those edits
+        // as one invertible boundary when their incremental batch is invalid.
+        const content = editor.scrollPage.map((block) => {
+            if (!block.isParent())
+                throw new Error('Expected a top-level block container');
+            return block.getState();
+        });
+        const { op, prevState } = this.buildReplaceOp(content);
+        if (op.length) {
+            editor.history.recordRebuild(op, prevState, editor.selection.getSelection());
+            editor.history.suppressRecording(() => this.dispatch(op, 'user'));
+        }
+        debug.warn(`Recovered invalid deferred edit batch from live document: ${String(error)}`);
+        return true;
+    }
+
     private _flushOperationCache() {
         if (!this._operationCache.length)
             return;
@@ -291,16 +312,24 @@ class JSONState {
         // `compose` returns JSONOp (= null | JSONOpList). Multiple queued
         // operations may cancel each other out (for example during IME
         // composition), producing the identity operation (`null`).
-        const op = this._operationCache.reduce(
-            (acc, curr) => json1.type.compose(acc, curr) as JSONOpList,
-        );
+        // Consume before applying: a failed batch must not poison every later edit.
+        const operations = this._operationCache;
+        this._operationCache = [];
         const prevDoc = this.getState();
-        this._apply(op);
+        let op: JSONOp;
+        try {
+            op = operations.reduce(
+                (acc, curr) => json1.type.compose(acc, curr) as JSONOpList,
+            );
+            this._apply(op);
+        }
+        catch (error) {
+            if (!this._recoverFromLiveTree(error))
+                throw error;
+            return;
+        }
         // TODO: remove doc in future
         const doc = this.getState();
-        // Clear before emitting: a listener that edits synchronously then starts
-        // a fresh batch instead of mutating the one being flushed.
-        this._operationCache = [];
 
         if (op === null)
             return;

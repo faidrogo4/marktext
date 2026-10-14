@@ -103,8 +103,14 @@ class Clipboard {
                 return;
             }
 
-            const { isSelectionInSameBlock } = this.selection.getSelection() ?? {};
-            if (isSelectionInSameBlock)
+            const selection = this.selection.getSelection();
+            if (!selection) {
+                // A range crossing editor roots cannot be applied to either document.
+                if (document.getSelection()?.rangeCount)
+                    event.preventDefault();
+                return;
+            }
+            if (selection.isSelectionInSameBlock)
                 return;
 
             if (!shouldCrossBlockCut(key, metaKey, event.ctrlKey))
@@ -135,7 +141,12 @@ class Clipboard {
             if (replacement == null || document.getSelection()?.isCollapsed !== false)
                 return;
 
-            if (this.selection.getSelection()?.isSelectionInSameBlock !== false)
+            const selection = this.selection.getSelection();
+            if (!selection) {
+                event.preventDefault();
+                return;
+            }
+            if (selection.isSelectionInSameBlock)
                 return;
 
             event.preventDefault();
